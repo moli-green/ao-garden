@@ -1,0 +1,334 @@
+<!--
+MIT License
+
+Copyright (c) 2026 Moli Green
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ao's garden</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #020205; /* 深淵な黒 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #aaa;
+            font-family: sans-serif;
+        }
+        canvas {
+            box-shadow: 0 0 50px rgba(0, 30, 60, 0.3);
+        }
+        #overlay {
+            position: absolute;
+            pointer-events: none;
+            text-align: center;
+            transition: opacity 1s;
+        }
+    </style>
+    <!-- p5.js と p5.sound ライブラリの読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+</head>
+<body>
+
+<div id="overlay">
+    <p>Click to start the world sound</p>
+</div>
+
+<script>
+    let drops = [];
+    let flowers = [];
+    let groundLevel;
+    let girlImg;
+    let imgUrl = ''; // 画像がある場合はここにパスを指定
+
+    // 音響用の変数
+    let synth;
+    let audioStarted = false;
+    let windForce = 0;
+
+    // 音階（ペンタトニックスケールのような、哀愁のある響き）
+    // C# minor pentatonic などをイメージ: C#4, E4, F#4, G#4, B4
+    // ここでは高音域でキラキラさせる
+    let notes = [554.37, 659.25, 739.99, 830.61, 987.77, 1108.73]; // C#5, E5, F#5, G#5, B5, C#6
+
+    function preload() {
+        if (imgUrl) {
+            girlImg = loadImage(imgUrl);
+        }
+    }
+
+    function setup() {
+        createCanvas(windowWidth, windowHeight);
+        groundLevel = height * 0.85;
+        noStroke();
+        imageMode(CENTER);
+
+        // シンセサイザーの初期化 (p5.PolySynth)
+        synth = new p5.PolySynth();
+        userStartAudio();
+    }
+
+    function draw() {
+        // 残像効果
+        background(2, 4, 8, 20); 
+
+        // 1. 少女の描画と涙の生成
+        drawSilhouette(width / 2, height / 2.2);
+
+        // 自動的に涙を生成（ランダムなタイミング）
+        if (frameCount % 60 === 0 || random(1) < 0.02) {
+            // 少女の目の位置あたりから生成
+            let eyeX = width / 2;
+            let eyeY = height / 2.2 - 20; 
+            drops.push(new Drop(eyeX + random(-5, 5), eyeY));
+        }
+
+        // 2. 風の計算（マウスのX位置による）
+        // 画面中心より右にあれば右風、左なら左風
+        let targetWind = map(mouseX, 0, width, -0.5, 0.5);
+        windForce = lerp(windForce, targetWind, 0.05);
+
+        // 3. 地面の描画
+        drawGround();
+
+        // 4. 雫の処理
+        handleDrops();
+
+        // 5. 花の処理
+        handleFlowers();
+        
+        // ガイド表示の制御
+        if (!audioStarted) {
+            // まだクリックしていない時
+        } else {
+            document.getElementById('overlay').style.opacity = 0;
+        }
+    }
+
+    // --- 描画関数群 ---
+
+    function drawSilhouette(x, y) {
+        let floatY = sin(frameCount * 0.02) * 8;
+        
+        if (girlImg) {
+            tint(255, 200);
+            image(girlImg, x, y + floatY, 300, 300);
+        } else {
+            push();
+            translate(x, y + floatY);
+            
+            // 後光（黄色いリング - 呼吸するように明滅）
+            let breath = sin(frameCount * 0.03) * 5;
+            noFill();
+            stroke(255, 255, 200, 15);
+            strokeWeight(20 + breath);
+            ellipse(0, -50, 250 + breath, 250 + breath);
+            noStroke();
+
+            // 本体
+            fill(240, 240, 255, 15);
+            for(let i=0; i<5; i++) {
+                ellipse(0, 0, 80 + i*10, 200 + i*5);
+            }
+            fill(255, 240);
+            ellipse(0, -20, 60, 60); // 頭
+            ellipse(0, 50, 80, 140); // 体
+            
+            // 手（歌詞「手が震えてる」）
+            let handShake = sin(frameCount * 0.8) * 0.5;
+            ellipse(-40, 40 + handShake, 15, 50); 
+            ellipse(40, 40 + handShake, 15, 50);  
+            pop();
+        }
+    }
+
+    function drawGround() {
+        // 地面に少しノイズ（ざらつき）を入れて荒野感を出す
+        for(let i = 0; i < width; i += 10) {
+            let noiseVal = noise(i * 0.01, frameCount * 0.01);
+            let h = map(noiseVal, 0, 1, -5, 5);
+            fill(5, 10, 25, 100);
+            rect(i, groundLevel + h, 10, height - groundLevel);
+        }
+        
+        // 境界線
+        fill(0, 20, 50, 30);
+        rect(0, groundLevel, width, 2);
+    }
+
+    function handleDrops() {
+        for (let i = drops.length - 1; i >= 0; i--) {
+            drops[i].applyForce(windForce); // 風の影響
+            drops[i].update();
+            drops[i].display();
+            
+            // 地面に着地
+            if (drops[i].y >= groundLevel) {
+                // 音を鳴らす（確率で鳴らさないことで、うるさくなりすぎないようにする）
+                if (audioStarted && random(1) < 0.8) {
+                    playGlassSound();
+                }
+
+                flowers.push(new Flower(drops[i].x, groundLevel));
+                
+                // 波紋
+                fill(150, 200, 255, 100);
+                ellipse(drops[i].x, groundLevel, 40, 6);
+                
+                drops.splice(i, 1);
+            }
+        }
+    }
+
+    function handleFlowers() {
+        for (let i = 0; i < flowers.length; i++) {
+            flowers[i].update();
+            flowers[i].display();
+        }
+        if (flowers.length > 40) flowers.shift();
+    }
+
+    // --- 音響処理 ---
+
+    function playGlassSound() {
+        // ランダムな音程を選択
+        let note = random(notes);
+        // 音の長さや強弱（ベロシティ）をランダムに
+        let velocity = random(0.05, 0.2); 
+        let dur = random(0.5, 1.0); // 余韻長め
+        let timeFromNow = 0;
+        
+        // シンセを鳴らす
+        synth.play(note, velocity, 0, dur);
+    }
+
+    // --- インタラクション ---
+
+    function mousePressed() {
+        // 最初のクリックでオーディオコンテキストを開始
+        if (!audioStarted) {
+            userStartAudio();
+            audioStarted = true;
+        }
+    }
+    
+    function touchStarted() {
+        if (!audioStarted) {
+            userStartAudio();
+            audioStarted = true;
+        }
+        return false;
+    }
+
+    function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
+        groundLevel = height * 0.85;
+    }
+
+    // --- クラス定義 ---
+
+    class Drop {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.vx = random(-0.5, 0.5); // 横揺れ
+            this.vy = random(2, 4);       // 落下速度
+            this.size = random(2, 4);
+            this.col = color(200, 230, 255, 200);
+        }
+        
+        applyForce(force) {
+            this.vx += force * 0.05;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += 0.05; // 重力
+            
+            // 空気抵抗的な減衰
+            this.vx *= 0.99;
+        }
+        
+        display() {
+            fill(this.col);
+            // 涙の形（少し縦長に）
+            ellipse(this.x, this.y, this.size, this.size * 2.5);
+        }
+    }
+
+    class Flower {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.h = 0;
+            this.maxH = random(20, 70);
+            this.growSpeed = random(0.3, 1.0);
+            this.angle = random(-0.2, 0.2) + windForce; // 風で少し傾く
+            this.col = color(random(100, 150), random(150, 200), 255, 0);
+            this.alpha = 0;
+        }
+        
+        update() {
+            if(this.h < this.maxH) {
+                this.h += this.growSpeed;
+                this.alpha = min(this.alpha + 3, 150); // 少し透明度を下げる
+            } else {
+                this.alpha -= 0.8; // 消える速度を調整
+            }
+            
+            // 風に揺れる
+            this.angle += sin(frameCount * 0.05) * 0.005 + (windForce * 0.01);
+        }
+        
+        display() {
+            push();
+            translate(this.x, this.y);
+            rotate(this.angle);
+            
+            // 茎
+            stroke(60, 80, 100, this.alpha);
+            strokeWeight(0.8);
+            line(0, 0, 0, -this.h);
+            
+            // 花（光の粒子）
+            noStroke();
+            fill(red(this.col), green(this.col), blue(this.col), this.alpha);
+            ellipse(0, -this.h, 3, 3);
+            
+            // ぼんやりとした光
+            fill(red(this.col), green(this.col), blue(this.col), this.alpha * 0.3);
+            ellipse(0, -this.h, 12, 12);
+            
+            pop();
+        }
+    }
+</script>
+</body>
+</html>

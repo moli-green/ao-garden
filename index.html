@@ -49,6 +49,24 @@ SOFTWARE.
             text-align: center;
             transition: opacity 1s;
         }
+        /* フッターリンクのスタイル */
+        #footer {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 12px;
+            opacity: 0.4; /* 普段は目立たない */
+            transition: opacity 0.3s;
+            z-index: 10; /* キャンバスより手前に */
+        }
+        #footer:hover {
+            opacity: 1; /* ホバー時に表示 */
+        }
+        #footer a {
+            color: #88aaff;
+            text-decoration: none;
+            letter-spacing: 1px;
+        }
     </style>
     <!-- p5.js と p5.sound ライブラリの読み込み -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
@@ -58,6 +76,11 @@ SOFTWARE.
 
 <div id="overlay">
     <p>Click to start the world sound</p>
+</div>
+
+<!-- Bandcampへのリンク -->
+<div id="footer">
+    <a href="https://moli-green.bandcamp.com/track/ao" target="_blank">Music: "ao" by Moli Green (CC0)</a>
 </div>
 
 <script>
